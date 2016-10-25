@@ -56,101 +56,117 @@ int get_file_count(char * name){
   return 0;
 }
 
-//add all necessary files to the list
-void add_to_file_list(char * name, char ** file_list, int * list_ptr){
-  if(is_file(name)){
-    file_list[*list_ptr] = malloc(strlen(name)+1);
-    strcpy(file_list[*list_ptr], name);
-    (*list_ptr)++;
-  }else if(is_directory(name)){
-    int count = 0;
+/* Function used by qsort to compare lines */
+int compare_function(const void * a, const void * b){
+  char * a_cast = *(char**)a;
+  char * b_cast = *(char**)b;
+  char * a_lower, * b_lower;
+  a_lower = malloc(strlen(a_cast)+1);
+  b_lower = malloc(strlen(b_cast)+1);
+  //lowercase strings and remove any chars that are not alphanumeric
+  int lower_ptr = 0, orig_ptr = 0;
+  for(orig_ptr; orig_ptr < strlen(a_cast); orig_ptr++){
+    if(isalnum(a_cast[orig_ptr])){
+      a_lower[lower_ptr] = tolower(a_cast[orig_ptr]);
+      lower_ptr++;
+    }
+  }
+  a_lower[lower_ptr] = '\0';
+  lower_ptr = 0, orig_ptr = 0;
+  for(orig_ptr; orig_ptr < strlen(b_cast); orig_ptr++){
+    if(isalnum(b_cast[orig_ptr])){
+      b_lower[lower_ptr] = tolower(b_cast[orig_ptr]);
+      lower_ptr++;
+    }
+  }
+  b_lower[lower_ptr] = '\0';
+  return strcmp(a_lower, b_lower);
+}
+
+//Print all subdirectories and child files
+void print_dir_list(char * name, int print_dir_name){
+  if(print_dir_name){
+    printf("\n");
+    printf("%s:\n", name);
+  }
+
+  if(is_directory(name)){
     DIR * directory;
     directory = opendir(name);
     struct dirent *d;
-    char fullpath [1024];
-    //TODO: need to sort this specific output
+    int sub_count = get_file_count(name);
+    char ** sub_file_list;
+    sub_file_list = malloc(sub_count*sizeof(char*));
+    int count = 0;
     while((d = readdir(directory)) != NULL){
       //only count file if it isn't hidden or current/parent dir
       if(d->d_name[0] != '.'){
-	fullpath[0] = '\0';
-	strcat(fullpath, name);
-	strcat(fullpath, "/");
-	strcat(fullpath, d->d_name);
-	//if it is a file add as usual
-	if(is_file(fullpath)){
-	  file_list[*list_ptr] = malloc(strlen(d->d_name)+1);
-	  strcpy(file_list[*list_ptr], d->d_name);
-	  (*list_ptr)++;
-	//if it is a directory add trailing /
-	}else if(is_directory(fullpath)){
-	  file_list[*list_ptr] = malloc(strlen(d->d_name)+2);
-	  strcpy(file_list[*list_ptr], d->d_name);
-	  file_list[*list_ptr][strlen(d->d_name)] = '/';
-          file_list[*list_ptr][strlen(d->d_name)+1] = '\0';
-	  (*list_ptr)++;
-	}
+	sub_file_list[count] = malloc(strlen(d->d_name)+1);
+	strcpy(sub_file_list[count], d->d_name);
+	count++;
       }
     }
     closedir(directory);
+    qsort(sub_file_list, count, sizeof(char*), compare_function);
+    int i;
+    for(i = 0; i < count; i++){
+      printf("%s\n", sub_file_list[i]);
+      free(sub_file_list[i]);
+    }
+    free(sub_file_list);
   }
-}
-
-/* Function used by qsort to compare lines */
-int compare_function(const void * a, const void * b){
-  //TODO: need to make this case neutral
-  return strcmp(*(char**)a, *(char**)b);
 }
 
 /*
  * myls() - produce the appropriate directory listing(s)
  */
 void myls(char **roots, int arg_count) {
-  //Get count of files to be displayed
-  int filecount = 0;
   if(arg_count == 0){
-    filecount = get_file_count(".");
-  }else{
-    int i;
-    for(i = 0; i < arg_count; i++){
-      filecount = filecount + get_file_count(roots[i]);
-      if(is_directory(roots[i])){
-	filecount = filecount + 2; //add two lines for directory definition
-      }
+    print_dir_list(".", 0);
+    return;
+  }
+
+  int filecount = 0, dircount = 0;
+  int i;
+  for(i = 0; i < arg_count; i++){
+    if(is_file(roots[i])){
+      filecount++;
+    }else if(is_directory(roots[i])){
+      dircount++;
     }
   }
 
   //TODO: need to do some presorting before collecting names
-  
-  //Create list of filenames and add all filenames
-  char ** file_list; 
-  file_list = malloc(sizeof(char*)*filecount);
-  int file_list_ptr = 0;
-  if(arg_count == 0){
-    add_to_file_list(".", file_list, &file_list_ptr);
-  }else{
-    int i;
-    for(i = 0; i < arg_count; i++){
-      //Add a header for the folder name
-      if(is_directory(roots[i]) && arg_count != 1){
-	file_list[file_list_ptr] = malloc(3*sizeof(char));
-	strcpy(file_list[file_list_ptr], " ");
-	file_list_ptr++;
-	file_list[file_list_ptr] = malloc(strlen(roots[i])+2);
-	strcpy(file_list[file_list_ptr], roots[i]);
-	file_list[file_list_ptr][strlen(roots[i])] = ':';
-	file_list[file_list_ptr][strlen(roots[i])+1] = '\0';
-	file_list_ptr++;
-	}
-      add_to_file_list(roots[i], file_list, &file_list_ptr);
+  //Split between files and directories
+  char ** filelist;
+  char ** dirlist;
+
+  filelist = malloc(filecount*sizeof(char*));
+  dirlist = malloc(dircount*sizeof(char*));
+
+  int filelist_ptr = 0;
+  int dirlist_ptr = 0;
+
+  for(i = 0; i < arg_count; i++){
+    if(is_file(roots[i])){
+      filelist[filelist_ptr] = malloc(strlen(roots[i])+1);
+      strcpy(filelist[filelist_ptr], roots[i]);
+      filelist_ptr++;
+    }else if(is_directory(roots[i])){
+      dirlist[dirlist_ptr] = malloc(strlen(roots[i])+1);
+      strcpy(dirlist[dirlist_ptr], roots[i]);
+      dirlist_ptr++;
     }
   }
 
-  //Sort filenames
-  //qsort(file_list, file_list_ptr, sizeof(char*), compare_function);
-  
-  int i;
-  for(i = 0; i < file_list_ptr; i++){
-    printf("%s\n", file_list[i]);
+  qsort(filelist, filelist_ptr, sizeof(char*), compare_function);
+  qsort(dirlist, dirlist_ptr, sizeof(char*), compare_function);
+
+  for(i = 0; i < filelist_ptr; i++){
+    printf("%s\n", filelist[i]);
+  }
+  for(i = 0; i < dirlist_ptr; i++){
+    print_dir_list(dirlist[i], arg_count != 1);
   }
 }
 
