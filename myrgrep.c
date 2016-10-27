@@ -3,12 +3,81 @@
 #include <stdlib.h>
 #include <string.h>
 #include "support.h"
+#include "dirent.h"
+
+//returns if given string refers to a directory
+int is_directory(char * name){
+  DIR * dir;
+  dir = opendir(name);
+  if(dir != NULL){
+    closedir(dir);
+    return 1;
+  }
+  return 0;
+}
+
+//returns if given string refers to a file (and not a dir)
+int is_file(char * name){
+  if(is_directory(name)){
+    return 0;
+  }
+  FILE *file;
+  if (file = fopen(name, "r")){
+    fclose(file);
+    return 1;
+  }
+  return 0;
+}
+
+/*
+ * grep_file() - display all lines of filename that contain searchstr
+ */
+void grep_file(char *searchstr, char *filename) {
+  if(searchstr == NULL){
+    printf("Error: search string needed\n");
+    exit(1);
+  }
+
+  if(filename == NULL){
+    return;
+  }
+
+  FILE * fp;
+  fp = fopen(filename, "r");
+  if(fp == NULL){
+    return;
+  }
+
+  char line [2048];
+  while(fgets(line, 1024, fp) != NULL){
+    if(strstr(line, searchstr) != NULL){
+      printf("%s\n", filename);
+      fclose(fp);
+      return;
+    }
+  }
+  fclose(fp);
+}
 
 /*
  * myrgrep() - find files (recursively) with matching pattern
  */
-void myrgrep(char *pattern, char **roots) {
-    /* TODO: Complete this function */
+void myrgrep(char *pattern, char *file) {
+  if(is_directory(file)){
+    DIR * directory;
+    directory = opendir(file);
+    struct dirent *d;
+    char fullpath [1024];
+    while((d = readdir(directory)) != NULL){
+      if(d->d_name[0] != '.'){
+	sprintf(fullpath,"%s/%s",file,d->d_name);
+	myrgrep(pattern, fullpath);
+      }
+    }
+    closedir(directory);
+  }else{
+    grep_file(pattern, file);
+  }
 }
 
 /*
@@ -37,11 +106,19 @@ int main(int argc, char **argv) {
     /* TODO: make sure to handle any other arguments specified by the */
     /*       assignment */
     while ((opt = getopt(argc, argv, "h")) != -1) {
-        switch(opt) {
-          case 'h': help(argv[0]); break;
-        }
+      switch(opt) {
+      case 'h': help(argv[0]); exit(1); break;
+      }
     }
 
-    /* TODO: fix this invocation */
-    myrgrep(NULL, NULL);
+    if(argc != 3){
+      help(argv[0]);
+    }
+    
+    char * pattern;
+    pattern = argv[1];
+    char * filename;
+    filename = argv[2];
+    
+    myrgrep(pattern, filename);
 }
